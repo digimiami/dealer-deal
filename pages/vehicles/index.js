@@ -9,6 +9,8 @@ export default function VehicleFinder() {
   
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [dbMessage, setDbMessage] = useState('');
   const [filters, setFilters] = useState({
     make: make || '',
     model: model || '',
@@ -18,22 +20,36 @@ export default function VehicleFinder() {
     search: search || '',
   });
 
+  // Update filters when router query changes
+  useEffect(() => {
+    setFilters({
+      make: router.query.make || '',
+      model: router.query.model || '',
+      bodyType: router.query.bodyType || '',
+      minPrice: router.query.minPrice || '',
+      maxPrice: router.query.budget || router.query.maxPrice || '',
+      search: router.query.search || '',
+    });
+  }, [router.query]);
+
+  // Fetch vehicles when router query changes
   useEffect(() => {
     fetchVehicles();
   }, [router.query]);
 
   const fetchVehicles = async () => {
     setLoading(true);
+    setError('');
+    setDbMessage('');
     try {
       const params = new URLSearchParams({
         status: 'available',
-        ...filters,
         ...router.query,
       });
       
       // Remove empty params
       Array.from(params.entries()).forEach(([key, value]) => {
-        if (!value) params.delete(key);
+        if (!value || value === 'undefined') params.delete(key);
       });
 
       const response = await fetch(`/api/vehicles/list?${params.toString()}`);
@@ -41,28 +57,55 @@ export default function VehicleFinder() {
 
       if (response.ok) {
         setVehicles(data.vehicles || []);
+        if (data.message) {
+          setDbMessage(data.message);
+        }
+      } else {
+        setError(data.error || 'Failed to fetch vehicles');
       }
     } catch (error) {
       console.error('Error fetching vehicles:', error);
+      setError('Failed to load vehicles. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleFilterChange = (key, value) => {
-    const newFilters = { ...filters, [key]: value };
-    setFilters(newFilters);
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSearchKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      applyFilters();
+    }
   };
 
   const applyFilters = () => {
     const query = { ...router.query };
+    // Preserve leadId if it exists
+    if (router.query.leadId) {
+      query.leadId = router.query.leadId;
+    }
+    
+    // Update query with filter values
     Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        query[key] = value;
+      if (value && value.trim()) {
+        query[key] = value.trim();
       } else {
         delete query[key];
       }
     });
+    
+    router.push({ pathname: '/vehicles', query }, undefined, { shallow: false });
+  };
+
+  const clearFilters = () => {
+    const query = {};
+    if (router.query.leadId) {
+      query.leadId = router.query.leadId;
+    }
+    setFilters({ make: '', model: '', bodyType: '', minPrice: '', maxPrice: '', search: '' });
     router.push({ pathname: '/vehicles', query });
   };
 
@@ -94,9 +137,11 @@ export default function VehicleFinder() {
                     type="text"
                     value={filters.search}
                     onChange={(e) => handleFilterChange('search', e.target.value)}
+                    onKeyPress={handleSearchKeyPress}
                     placeholder="Make, model, keywords..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Press Enter to search</p>
                 </div>
 
                 <div>
@@ -138,12 +183,21 @@ export default function VehicleFinder() {
                   />
                 </div>
 
-                <button
-                  onClick={applyFilters}
-                  className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition"
-                >
-                  Apply Filters
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={applyFilters}
+                    className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition"
+                  >
+                    Apply Filters
+                  </button>
+                  <button
+                    onClick={clearFilters}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                    title="Clear all filters"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -157,16 +211,48 @@ export default function VehicleFinder() {
               </div>
             ) : vehicles.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-12 text-center">
-                <p className="text-gray-600 text-lg">No vehicles found matching your criteria.</p>
-                <button
-                  onClick={() => {
-                    setFilters({ make: '', model: '', bodyType: '', minPrice: '', maxPrice: '', search: '' });
-                    router.push('/vehicles');
-                  }}
-                  className="mt-4 text-indigo-600 hover:text-indigo-700"
-                >
-                  Clear filters and browse all vehicles
-                </button>
+                {dbMessage ? (
+                  <>
+                    <div className="mb-4">
+                      <svg className="mx-auto h-16 w-16 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">Database Not Configured</h3>
+                    <p className="text-gray-600 mb-4">{dbMessage}</p>
+                    <p className="text-sm text-gray-500 mb-4">
+                      To view vehicles, you need to set up a PostgreSQL database and add vehicle data.
+                    </p>
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg text-left text-sm">
+                      <p className="font-semibold mb-2">Quick Setup:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                        <li>Add PostgreSQL database in Vercel (Storage → Postgres)</li>
+                        <li>Run database migrations</li>
+                        <li>Add vehicle data using the seed file</li>
+                      </ol>
+                    </div>
+                  </>
+                ) : error ? (
+                  <>
+                    <p className="text-red-600 text-lg mb-2">Error: {error}</p>
+                    <button
+                      onClick={fetchVehicles}
+                      className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                    >
+                      Try Again
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-600 text-lg mb-4">No vehicles found matching your criteria.</p>
+                    <button
+                      onClick={clearFilters}
+                      className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                    >
+                      Clear Filters
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
