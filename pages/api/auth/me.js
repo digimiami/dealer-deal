@@ -1,6 +1,5 @@
-const path = require('path');
-
-const auth = require(path.join(process.cwd(), 'lib', 'auth'));
+import { getUserFromRequest } from '../../../lib/supabase-server';
+import { createSupabaseAdmin } from '../../../lib/supabase-server';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -12,35 +11,50 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get token from header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
-
-    const token = authHeader.substring(7);
-    const decoded = auth.verifyToken(token);
-
-    if (!decoded) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
-    }
-
-    // Get user data
-    const user = await auth.getUserById(decoded.id, decoded.type);
+    const user = await getUserFromRequest(req);
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Get user type from metadata
+    const userType = user.user_metadata?.user_type || 'customer';
+    const dealerId = user.user_metadata?.dealer_id || null;
+
+    // Get additional user data from database
+    const supabaseAdmin = createSupabaseAdmin();
+    let userData = null;
+
+    if (userType === 'dealer' && dealerId) {
+      const { data, error } = await supabaseAdmin
+        .from('dealer_accounts')
+        .select('*, dealers(name)')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && data) {
+        userData = data;
+      }
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && data) {
+        userData = data;
+      }
     }
 
     return res.json({
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
-        type: decoded.type,
-        role: decoded.role,
-        dealerId: user.dealer_id || user.dealerId || null,
-        dealerName: user.dealer_name || null,
+        name: user.user_metadata?.name || userData?.name || user.email,
+        type: userType,
+        dealerId: dealerId,
+        phone: userData?.phone || user.user_metadata?.phone || null,
       },
     });
   } catch (error) {

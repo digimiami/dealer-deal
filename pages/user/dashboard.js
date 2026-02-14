@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { supabase } from '../../lib/supabase';
 
 export default function UserDashboard() {
   const router = useRouter();
@@ -11,36 +12,44 @@ export default function UserDashboard() {
   const [favorites, setFavorites] = useState([]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
+    checkUser();
+  }, []);
 
-    if (!token || !userData) {
+  const checkUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
       router.push('/login');
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.type === 'dealer') {
-        router.push('/dealer/dashboard');
-        return;
-      }
-      setUser(parsedUser);
-      fetchUserData(token, parsedUser.email);
-    } catch (error) {
-      router.push('/login');
+    const userType = session.user.user_metadata?.user_type || 'customer';
+    if (userType === 'dealer') {
+      router.push('/dealer/dashboard');
+      return;
     }
-  }, []);
 
-  const fetchUserData = async (token, email) => {
+    setUser({
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.user_metadata?.name || session.user.email,
+      type: userType,
+    });
+
+    fetchUserData(session.user.email);
+  };
+
+  const fetchUserData = async (email) => {
     try {
-      // Fetch user's leads
-      const response = await fetch('/api/user/leads', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setLeads(data.leads || []);
+      // Fetch user's leads using Supabase
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*, dealers(name)')
+        .eq('email', email)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setLeads(data);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -49,9 +58,8 @@ export default function UserDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     router.push('/');
   };
 

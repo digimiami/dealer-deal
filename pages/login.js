@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { supabase } from '../lib/supabase';
 
 export default function Login() {
   const router = useRouter();
@@ -18,28 +19,25 @@ export default function Login() {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
+      // Use Supabase client directly for login
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+      if (signInError) {
+        throw new Error(signInError.message || 'Login failed');
       }
 
-      // Store token and user data
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+      if (!data.session) {
+        throw new Error('Failed to create session');
       }
+
+      // Get user metadata
+      const userType = data.user.user_metadata?.user_type || 'customer';
 
       // Redirect based on user type
-      if (data.user.type === 'dealer') {
+      if (userType === 'dealer') {
         router.push('/dealer/dashboard');
       } else {
         router.push('/user/dashboard');

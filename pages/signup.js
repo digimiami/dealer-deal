@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { supabase } from '../lib/supabase';
 
 export default function Signup() {
   const router = useRouter();
@@ -48,10 +49,11 @@ export default function Signup() {
         throw new Error(data.error || 'Failed to create account');
       }
 
-      // Store token
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+      // If session is returned, store it
+      if (data.session) {
+        // Supabase client will handle session storage automatically
+        // But we can also store in localStorage for compatibility
+        localStorage.setItem('supabase_session', JSON.stringify(data.session));
       }
 
       setSuccess(true);

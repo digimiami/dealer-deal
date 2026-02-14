@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { supabase } from '../../lib/supabase';
 
 export default function DealerDashboard() {
   const router = useRouter();
@@ -15,52 +16,57 @@ export default function DealerDashboard() {
   });
 
   useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
+    checkUser();
+  }, []);
 
-    if (!token || !userData) {
+  const checkUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
       router.push('/login');
       return;
     }
 
-    try {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.type !== 'dealer') {
-        router.push('/user/dashboard');
-        return;
-      }
-      setUser(parsedUser);
-      fetchDashboardData(token);
-    } catch (error) {
-      router.push('/login');
+    const userType = session.user.user_metadata?.user_type || 'customer';
+    if (userType !== 'dealer') {
+      router.push('/user/dashboard');
+      return;
     }
-  }, []);
 
-  const fetchDashboardData = async (token) => {
+    setUser({
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.user_metadata?.name || session.user.email,
+      type: userType,
+      dealerId: session.user.user_metadata?.dealer_id,
+    });
+
+    fetchDashboardData(session.user.user_metadata?.dealer_id);
+  };
+
+  const fetchDashboardData = async (dealerId) => {
+    if (!dealerId) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Fetch dealer stats
-      const [leadsRes, vehiclesRes, appointmentsRes] = await Promise.all([
-        fetch('/api/leads/list?dealerId=' + user?.dealerId, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch('/api/vehicles/list?dealerId=' + user?.dealerId, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch('/api/appointments/list?dealerId=' + user?.dealerId, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      // Fetch dealer stats using Supabase
+      const [leadsData, vehiclesData, appointmentsData] = await Promise.all([
+        supabase.from('leads').select('*').eq('dealer_id', dealerId),
+        supabase.from('vehicles').select('*').eq('dealer_id', dealerId),
+        supabase.from('test_drive_appointments').select('*').eq('dealer_id', dealerId),
       ]);
 
-      const leads = await leadsRes.json();
-      const vehicles = await vehiclesRes.json();
-      const appointments = await appointmentsRes.json();
+      const leads = leadsData.data || [];
+      const vehicles = vehiclesData.data || [];
+      const appointments = appointmentsData.data || [];
 
       setStats({
-        totalLeads: leads.leads?.length || 0,
-        newLeads: leads.leads?.filter(l => l.status === 'new').length || 0,
-        appointments: appointments.appointments?.length || 0,
-        vehicles: vehicles.vehicles?.length || 0,
+        totalLeads: leads.length,
+        newLeads: leads.filter(l => l.status === 'new').length,
+        appointments: appointments.length,
+        vehicles: vehicles.length,
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -69,9 +75,8 @@ export default function DealerDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     router.push('/');
   };
 

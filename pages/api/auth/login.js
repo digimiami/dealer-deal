@@ -1,7 +1,5 @@
+import { createSupabaseClient } from '../../../lib/supabase-server';
 import { z } from 'zod';
-const path = require('path');
-
-const auth = require(path.join(process.cwd(), 'lib', 'auth'));
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -19,30 +17,40 @@ export default async function handler(req, res) {
 
   try {
     const validatedData = loginSchema.parse(req.body);
+    const supabase = createSupabaseClient();
 
-    const user = await auth.authenticateUser(validatedData.email, validatedData.password);
-
-    // Generate token
-    const token = auth.generateToken({
-      id: user.id,
-      email: user.email,
-      type: user.type,
-      role: user.role,
-      dealerId: user.dealerId || null,
+    // Sign in with Supabase Auth
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: validatedData.email,
+      password: validatedData.password,
     });
+
+    if (error) {
+      return res.status(401).json({
+        error: error.message || 'Invalid credentials',
+      });
+    }
+
+    if (!data.session || !data.user) {
+      return res.status(401).json({
+        error: 'Failed to create session',
+      });
+    }
+
+    // Get user metadata to determine type
+    const userType = data.user.user_metadata?.user_type || 'customer';
+    const dealerId = data.user.user_metadata?.dealer_id || null;
 
     return res.json({
       success: true,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        type: user.type,
-        role: user.role,
-        dealerId: user.dealerId || null,
-        dealerName: user.dealerName || null,
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.user_metadata?.name || data.user.email,
+        type: userType,
+        dealerId: dealerId,
       },
-      token,
+      session: data.session,
       message: 'Login successful',
     });
   } catch (error) {
@@ -54,8 +62,8 @@ export default async function handler(req, res) {
     }
 
     console.error('Login error:', error);
-    return res.status(401).json({
-      error: error.message || 'Invalid credentials',
+    return res.status(500).json({
+      error: 'Internal server error',
     });
   }
 }
