@@ -230,6 +230,27 @@ export default function Home() {
                 </div>
 
                 <div>
+                  <label htmlFor="zipcode" className="block text-sm font-medium text-gray-700 mb-2">
+                    Zip Code *
+                  </label>
+                  <input
+                    type="text"
+                    id="zipcode"
+                    name="zipcode"
+                    required
+                    value={formData.zipcode}
+                    onChange={handleChange}
+                    maxLength={10}
+                    pattern="[0-9]{5}(-[0-9]{4})?"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-lg"
+                    placeholder="12345"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    We'll find dealers near you based on your zip code
+                  </p>
+                </div>
+
+                <div>
                   <label htmlFor="vehicleInterest" className="block text-sm font-medium text-gray-700 mb-2">
                     What vehicle are you interested in?
                   </label>
