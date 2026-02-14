@@ -3,6 +3,34 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 
+// Helper function to parse budget range to max price number
+function parseBudgetToMaxPrice(budget) {
+  if (!budget || typeof budget !== 'string') return '';
+  
+  // Extract number from budget strings like "$20k-$30k" or "Under $20k"
+  if (budget.includes('Under')) {
+    const match = budget.match(/\$?(\d+)k?/i);
+    return match ? (parseInt(match[1]) * 1000).toString() : '';
+  } else if (budget.includes('Over')) {
+    const match = budget.match(/\$?(\d+)k?/i);
+    return match ? (parseInt(match[1]) * 1000).toString() : '';
+  } else if (budget.includes('-')) {
+    // For ranges like "$20k-$30k", use the upper bound
+    const parts = budget.split('-');
+    if (parts.length === 2) {
+      const match = parts[1].match(/\$?(\d+)k?/i);
+      return match ? (parseInt(match[1]) * 1000).toString() : '';
+    }
+  }
+  
+  // If it's already a number string, return it
+  if (!isNaN(parseFloat(budget))) {
+    return budget;
+  }
+  
+  return '';
+}
+
 export default function VehicleFinder() {
   const router = useRouter();
   const { leadId, search, make, model, budget, bodyType } = router.query;
@@ -16,18 +44,19 @@ export default function VehicleFinder() {
     model: model || '',
     bodyType: bodyType || '',
     minPrice: '',
-    maxPrice: budget || '',
+    maxPrice: parseBudgetToMaxPrice(budget) || '',
     search: search || '',
   });
 
   // Update filters when router query changes
   useEffect(() => {
+    const budgetValue = router.query.budget || '';
     setFilters({
       make: router.query.make || '',
       model: router.query.model || '',
       bodyType: router.query.bodyType || '',
       minPrice: router.query.minPrice || '',
-      maxPrice: router.query.budget || router.query.maxPrice || '',
+      maxPrice: parseBudgetToMaxPrice(budgetValue) || router.query.maxPrice || '',
       search: router.query.search || '',
     });
   }, [router.query]);
