@@ -2,9 +2,13 @@
 
 ## Current Status
 
-The GitHub Actions workflow is set up to:
-1. ✅ **Build the application** (always runs)
-2. ⚠️ **Deploy to Vercel** (optional, only if secrets are configured)
+Since **Vercel auto-deploys from GitHub**, you don't need GitHub Actions for deployment!
+
+The workflow is now simplified to:
+1. ✅ **Build the application** (verifies code compiles)
+2. ✅ **CI/CD checks** (catches build errors before Vercel deploys)
+
+**No secrets needed!** The workflow just verifies your code builds successfully.
 
 ## Why the Workflow Might Be Failing
 
