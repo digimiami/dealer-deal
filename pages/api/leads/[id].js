@@ -1,10 +1,24 @@
 const path = require('path');
-const pool = require(path.join(process.cwd(), 'lib', 'db'));
 
 export default async function handler(req, res) {
   const { id } = req.query;
 
+  // Lazy load database
+  let pool;
+  try {
+    pool = require(path.join(process.cwd(), 'lib', 'db'));
+  } catch (error) {
+    console.error('Database module not available:', error.message);
+  }
+
   if (req.method === 'GET') {
+    if (!pool) {
+      return res.status(503).json({ 
+        error: 'Database not configured',
+        message: 'Please set up PostgreSQL to view lead details.',
+      });
+    }
+
     try {
       const result = await pool.query(`
         SELECT 
@@ -24,11 +38,21 @@ export default async function handler(req, res) {
       return res.json({ lead: result.rows[0] });
     } catch (error) {
       console.error('Error fetching lead:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message,
+      });
     }
   }
 
   if (req.method === 'PATCH') {
+    if (!pool) {
+      return res.status(503).json({ 
+        error: 'Database not configured',
+        message: 'Please set up PostgreSQL to update leads.',
+      });
+    }
+
     try {
       const { status, notes, dealerId } = req.body;
       const updates = [];
@@ -66,7 +90,10 @@ export default async function handler(req, res) {
       return res.json({ lead: result.rows[0] });
     } catch (error) {
       console.error('Error updating lead:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message,
+      });
     }
   }
 

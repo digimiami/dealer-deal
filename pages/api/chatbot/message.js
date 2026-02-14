@@ -1,10 +1,26 @@
 const path = require('path');
-const openclaw = require(path.join(process.cwd(), 'lib', 'openclaw'));
-const pool = require(path.join(process.cwd(), 'lib', 'db'));
 
 export default async function handler(req, res) {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Lazy load modules
+  let pool, openclaw;
+  try {
+    pool = require(path.join(process.cwd(), 'lib', 'db'));
+  } catch (error) {
+    console.error('Database module not available:', error.message);
+  }
+
+  try {
+    openclaw = require(path.join(process.cwd(), 'lib', 'openclaw'));
+  } catch (error) {
+    console.error('OpenClaw module not available:', error.message);
   }
 
   try {
@@ -21,7 +37,7 @@ export default async function handler(req, res) {
 
     // Get lead information if available
     let leadInfo = '';
-    if (leadId) {
+    if (leadId && pool) {
       try {
         const leadResult = await pool.query('SELECT * FROM leads WHERE id = $1', [leadId]);
         if (leadResult.rows.length > 0) {
@@ -44,42 +60,44 @@ export default async function handler(req, res) {
       price: message.match(/\$?(\d+)k?/gi),
     };
 
-    let vehicleQuery = 'SELECT v.*, d.name as dealer_name FROM vehicles v JOIN dealers d ON v.dealer_id = d.id WHERE v.status = $1';
-    const vehicleParams = ['available'];
-    let paramCount = 2;
+    if (pool) {
+      let vehicleQuery = 'SELECT v.*, d.name as dealer_name FROM vehicles v JOIN dealers d ON v.dealer_id = d.id WHERE v.status = $1';
+      const vehicleParams = ['available'];
+      let paramCount = 2;
 
-    // Try to match vehicles
-    for (const make of searchTerms.make) {
-      if (messageLower.includes(make)) {
-        vehicleQuery += ` AND LOWER(v.make) = LOWER($${paramCount++})`;
-        vehicleParams.push(make);
-        break;
+      // Try to match vehicles
+      for (const make of searchTerms.make) {
+        if (messageLower.includes(make)) {
+          vehicleQuery += ` AND LOWER(v.make) = LOWER($${paramCount++})`;
+          vehicleParams.push(make);
+          break;
+        }
       }
-    }
 
-    for (const bodyType of searchTerms.bodyType) {
-      if (messageLower.includes(bodyType)) {
-        vehicleQuery += ` AND LOWER(v.body_type) = LOWER($${paramCount++})`;
-        vehicleParams.push(bodyType);
-        break;
+      for (const bodyType of searchTerms.bodyType) {
+        if (messageLower.includes(bodyType)) {
+          vehicleQuery += ` AND LOWER(v.body_type) = LOWER($${paramCount++})`;
+          vehicleParams.push(bodyType);
+          break;
+        }
       }
-    }
 
-    if (searchTerms.price && searchTerms.price.length > 0) {
-      const maxPrice = parseInt(searchTerms.price[0].replace(/[^0-9]/g, '')) * 1000;
-      if (maxPrice > 0) {
-        vehicleQuery += ` AND v.price <= $${paramCount++}`;
-        vehicleParams.push(maxPrice);
+      if (searchTerms.price && searchTerms.price.length > 0) {
+        const maxPrice = parseInt(searchTerms.price[0].replace(/[^0-9]/g, '')) * 1000;
+        if (maxPrice > 0) {
+          vehicleQuery += ` AND v.price <= $${paramCount++}`;
+          vehicleParams.push(maxPrice);
+        }
       }
-    }
 
-    vehicleQuery += ' ORDER BY v.featured DESC, v.price ASC LIMIT 5';
+      vehicleQuery += ' ORDER BY v.featured DESC, v.price ASC LIMIT 5';
 
-    try {
-      const vehicleResult = await pool.query(vehicleQuery, vehicleParams);
-      vehicleRecommendations = vehicleResult.rows;
-    } catch (error) {
-      console.error('Error searching vehicles:', error);
+      try {
+        const vehicleResult = await pool.query(vehicleQuery, vehicleParams);
+        vehicleRecommendations = vehicleResult.rows;
+      } catch (error) {
+        console.error('Error searching vehicles:', error);
+      }
     }
 
     // Build prompt for OpenClaw
@@ -105,29 +123,38 @@ Respond naturally to the customer's message.`;
 
     // Send to OpenClaw
     let aiResponse = '';
-    try {
-      const openclawResponse = await openclaw.sendToAgent({
-        message: systemPrompt,
-        name: 'CarShoppingAssistant',
-        sessionKey: sessionKey || `chat:${Date.now()}`,
-        deliver: false, // Don't deliver externally, just get response
-      });
+    if (openclaw) {
+      try {
+        const openclawResponse = await openclaw.sendToAgent({
+          message: systemPrompt,
+          name: 'CarShoppingAssistant',
+          sessionKey: sessionKey || `chat:${Date.now()}`,
+          deliver: false, // Don't deliver externally, just get response
+        });
 
-      // Handle different response formats from OpenClaw
-      if (typeof openclawResponse === 'string') {
-        aiResponse = openclawResponse;
-      } else if (openclawResponse?.response) {
-        aiResponse = openclawResponse.response;
-      } else if (openclawResponse?.message) {
-        aiResponse = openclawResponse.message;
-      } else if (openclawResponse?.content) {
-        aiResponse = openclawResponse.content;
-      } else {
-        aiResponse = 'I can help you find the perfect vehicle! What are you looking for?';
+        // Handle different response formats from OpenClaw
+        if (typeof openclawResponse === 'string') {
+          aiResponse = openclawResponse;
+        } else if (openclawResponse?.response) {
+          aiResponse = openclawResponse.response;
+        } else if (openclawResponse?.message) {
+          aiResponse = openclawResponse.message;
+        } else if (openclawResponse?.content) {
+          aiResponse = openclawResponse.content;
+        } else {
+          aiResponse = 'I can help you find the perfect vehicle! What are you looking for?';
+        }
+      } catch (error) {
+        console.error('OpenClaw error:', error);
+        // Fallback response
+        if (vehicleRecommendations.length > 0) {
+          aiResponse = `I found ${vehicleRecommendations.length} vehicle(s) that might interest you! Would you like to see the details?`;
+        } else {
+          aiResponse = 'I can help you find the perfect vehicle! Could you tell me more about what you\'re looking for? (e.g., make, model, budget, type of vehicle)';
+        }
       }
-    } catch (error) {
-      console.error('OpenClaw error:', error);
-      // Fallback response
+    } else {
+      // Fallback if OpenClaw not available
       if (vehicleRecommendations.length > 0) {
         aiResponse = `I found ${vehicleRecommendations.length} vehicle(s) that might interest you! Would you like to see the details?`;
       } else {

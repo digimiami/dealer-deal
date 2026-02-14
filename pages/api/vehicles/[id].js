@@ -1,10 +1,26 @@
+// Use require for CommonJS modules
 const path = require('path');
-const pool = require(path.join(process.cwd(), 'lib', 'db'));
 
 export default async function handler(req, res) {
   const { id } = req.query;
 
   if (req.method === 'GET') {
+    // Lazy load database module
+    let pool;
+    try {
+      pool = require(path.join(process.cwd(), 'lib', 'db'));
+    } catch (error) {
+      console.error('Database module not available:', error.message);
+    }
+
+    // If no database, return error
+    if (!pool) {
+      return res.status(503).json({ 
+        error: 'Database not configured',
+        message: 'Please set up PostgreSQL to view vehicle details.',
+      });
+    }
+
     try {
       // Get vehicle details with dealer info
       const vehicleResult = await pool.query(`
@@ -39,7 +55,7 @@ export default async function handler(req, res) {
         await pool.query(`
           INSERT INTO vehicle_interactions (vehicle_id, lead_id, interaction_type, ip_address, user_agent)
           VALUES ($1, $2, 'view', $3, $4)
-        `, [id, leadId, req.headers['x-forwarded-for'] || req.connection.remoteAddress, req.headers['user-agent']]);
+        `, [id, leadId, req.headers['x-forwarded-for'] || req.connection?.remoteAddress, req.headers['user-agent']]);
       } catch (error) {
         console.error('Error tracking view:', error);
         // Don't fail the request if tracking fails
@@ -51,11 +67,16 @@ export default async function handler(req, res) {
           features: vehicle.features || [],
           dealer_specialties: vehicle.dealer_specialties || [],
           media: mediaResult.rows,
+          price: parseFloat(vehicle.price),
+          mileage: parseInt(vehicle.mileage) || 0,
         },
       });
     } catch (error) {
       console.error('Error fetching vehicle:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message,
+      });
     }
   }
 

@@ -1,6 +1,4 @@
 const path = require('path');
-const pool = require(path.join(process.cwd(), 'lib', 'db'));
-const openclaw = require(path.join(process.cwd(), 'lib', 'openclaw'));
 const { z } = require('zod');
 
 const appointmentSchema = z.object({
@@ -18,8 +16,33 @@ const appointmentSchema = z.object({
 });
 
 export default async function handler(req, res) {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Lazy load modules
+  let pool, openclaw;
+  try {
+    pool = require(path.join(process.cwd(), 'lib', 'db'));
+  } catch (error) {
+    console.error('Database module not available:', error.message);
+  }
+
+  try {
+    openclaw = require(path.join(process.cwd(), 'lib', 'openclaw'));
+  } catch (error) {
+    console.error('OpenClaw module not available:', error.message);
+  }
+
+  if (!pool) {
+    return res.status(503).json({ 
+      error: 'Database not configured',
+      message: 'Please set up PostgreSQL to create appointments.',
+    });
   }
 
   try {
@@ -71,9 +94,10 @@ export default async function handler(req, res) {
 
     const appointment = appointmentResult.rows[0];
 
-    // Send notification to dealer via OpenClaw
-    try {
-      const dealerMessage = `New Test Drive Appointment Request:
+    // Send notification to dealer via OpenClaw (if available)
+    if (openclaw) {
+      try {
+        const dealerMessage = `New Test Drive Appointment Request:
 
 Customer: ${validatedData.customerName}
 Email: ${validatedData.customerEmail}
@@ -89,20 +113,20 @@ ${validatedData.notes ? `Notes: ${validatedData.notes}` : ''}
 
 Please confirm this appointment as soon as possible.`;
 
-      await openclaw.sendToAgent({
-        message: dealerMessage,
-        name: 'DealerNotification',
-        deliver: true,
-        channel: 'whatsapp',
-        to: dealer.phone,
-      });
-    } catch (error) {
-      console.error('Error sending dealer notification:', error);
-    }
+        await openclaw.sendToAgent({
+          message: dealerMessage,
+          name: 'DealerNotification',
+          deliver: true,
+          channel: 'whatsapp',
+          to: dealer.phone,
+        });
+      } catch (error) {
+        console.error('Error sending dealer notification:', error);
+      }
 
-    // Send confirmation to customer
-    try {
-      const customerMessage = `Hi ${validatedData.customerName},
+      // Send confirmation to customer
+      try {
+        const customerMessage = `Hi ${validatedData.customerName},
 
 Thank you for requesting a test drive!
 
@@ -117,15 +141,16 @@ If you have any questions, feel free to contact us.
 Best regards,
 Carforsales.net`;
 
-      await openclaw.sendToAgent({
-        message: customerMessage,
-        name: 'CustomerConfirmation',
-        deliver: true,
-        channel: 'email',
-        to: validatedData.customerEmail,
-      });
-    } catch (error) {
-      console.error('Error sending customer confirmation:', error);
+        await openclaw.sendToAgent({
+          message: customerMessage,
+          name: 'CustomerConfirmation',
+          deliver: true,
+          channel: 'email',
+          to: validatedData.customerEmail,
+        });
+      } catch (error) {
+        console.error('Error sending customer confirmation:', error);
+      }
     }
 
     return res.status(201).json({

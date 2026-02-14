@@ -1,9 +1,22 @@
+// Use require for CommonJS modules
 const path = require('path');
-const pool = require(path.join(process.cwd(), 'lib', 'db'));
 
 export default async function handler(req, res) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Lazy load database module
+  let pool;
+  try {
+    pool = require(path.join(process.cwd(), 'lib', 'db'));
+  } catch (error) {
+    console.error('Database module not available:', error.message);
   }
 
   try {
@@ -23,6 +36,17 @@ export default async function handler(req, res) {
       offset = 0,
       search
     } = req.query;
+
+    // If no database, return empty results with helpful message
+    if (!pool) {
+      return res.json({
+        vehicles: [],
+        count: 0,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        message: 'Database not configured. Please set up PostgreSQL to view vehicles.',
+      });
+    }
 
     let query = `
       SELECT 
@@ -116,6 +140,8 @@ export default async function handler(req, res) {
       features: vehicle.features || [],
       primary_image: vehicle.primary_image || null,
       media_count: parseInt(vehicle.media_count) || 0,
+      price: parseFloat(vehicle.price),
+      mileage: parseInt(vehicle.mileage) || 0,
     }));
 
     return res.json({
@@ -126,6 +152,13 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Error fetching vehicles:', error);
-    return res.status(500).json({ error: 'Internal server error', message: error.message });
+    
+    // Return error as JSON, not HTML
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message,
+      vehicles: [],
+      count: 0,
+    });
   }
 }
