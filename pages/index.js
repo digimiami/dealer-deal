@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import Chatbot from '../components/Chatbot';
 
 export default function Home() {
@@ -108,6 +109,7 @@ export default function Home() {
               <a href="#vehicles" className="text-gray-600 hover:text-indigo-600 transition">Browse Vehicles</a>
               <a href="#how-it-works" className="text-gray-600 hover:text-indigo-600 transition">How It Works</a>
               <a href="#testimonials" className="text-gray-600 hover:text-indigo-600 transition">Testimonials</a>
+              <Link href="/login" className="text-gray-600 hover:text-indigo-600 transition">Sign In</Link>
               <button
                 onClick={() => router.push('/vehicles')}
                 className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"

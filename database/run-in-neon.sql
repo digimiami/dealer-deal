@@ -181,7 +181,76 @@ CREATE INDEX IF NOT EXISTS idx_test_drive_status ON test_drive_appointments(stat
 CREATE INDEX IF NOT EXISTS idx_test_drive_preferred_date ON test_drive_appointments(preferred_date);
 
 -- ============================================
--- STEP 4: Functions and Triggers
+-- STEP 4: Authentication Tables
+-- ============================================
+
+-- Users table (for customers/leads who sign up)
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(50),
+  role VARCHAR(50) DEFAULT 'customer',
+  email_verified BOOLEAN DEFAULT false,
+  email_verification_token VARCHAR(255),
+  password_reset_token VARCHAR(255),
+  password_reset_expires TIMESTAMP,
+  last_login TIMESTAMP,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Dealers authentication table
+CREATE TABLE IF NOT EXISTS dealer_accounts (
+  id SERIAL PRIMARY KEY,
+  dealer_id INTEGER NOT NULL UNIQUE REFERENCES dealers(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  role VARCHAR(50) DEFAULT 'dealer',
+  email_verified BOOLEAN DEFAULT false,
+  email_verification_token VARCHAR(255),
+  password_reset_token VARCHAR(255),
+  password_reset_expires TIMESTAMP,
+  last_login TIMESTAMP,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User sessions
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  user_type VARCHAR(50) NOT NULL,
+  session_token VARCHAR(255) NOT NULL UNIQUE,
+  refresh_token VARCHAR(255),
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Link users to leads
+CREATE TABLE IF NOT EXISTS user_leads (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, lead_id)
+);
+
+-- Authentication indexes
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_dealer_accounts_dealer_id ON dealer_accounts(dealer_id);
+CREATE INDEX IF NOT EXISTS idx_dealer_accounts_email ON dealer_accounts(email);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_user_leads_user_id ON user_leads(user_id);
+
+-- ============================================
+-- STEP 5: Functions and Triggers
 -- ============================================
 
 -- Function to update updated_at timestamp
@@ -209,8 +278,15 @@ CREATE TRIGGER update_vehicles_updated_at BEFORE UPDATE ON vehicles
 CREATE TRIGGER update_test_drive_updated_at BEFORE UPDATE ON test_drive_appointments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Authentication triggers
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_dealer_accounts_updated_at BEFORE UPDATE ON dealer_accounts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================
--- STEP 5: Seed Sample Data
+-- STEP 6: Seed Sample Data
 -- ============================================
 
 -- Sample dealers
