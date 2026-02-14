@@ -1,0 +1,66 @@
+{
+  "gateway": {
+    "port": 18789,
+    "bind": "0.0.0.0",
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_TOKEN}"
+    }
+  },
+  "hooks": {
+    "enabled": true,
+    "token": "${OPENCLAW_WEBHOOK_TOKEN}",
+    "path": "/hooks",
+    "mappings": [
+      {
+        "match": {
+          "path": "lead"
+        },
+        "action": "agent",
+        "wakeMode": "now",
+        "name": "LeadQualifier",
+        "sessionKey": "hook:lead:{{leadId}}",
+        "messageTemplate": "New lead: {{name}} ({{email}}, {{phone}}). Interested in {{vehicleInterest}}. Budget: {{budget}}. Timeline: {{timeline}}",
+        "deliver": true,
+        "channel": "whatsapp"
+      },
+      {
+        "match": {
+          "path": "dealer-notification"
+        },
+        "action": "agent",
+        "wakeMode": "now",
+        "name": "DealerNotification",
+        "deliver": true,
+        "channel": "whatsapp"
+      }
+    ]
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "allowFrom": []
+    },
+    "email": {
+      "enabled": true,
+      "smtp": {
+        "host": "${SMTP_HOST}",
+        "port": "${SMTP_PORT}",
+        "secure": true,
+        "auth": {
+          "user": "${SMTP_USER}",
+          "pass": "${SMTP_PASSWORD}"
+        }
+      }
+    },
+    "telegram": {
+      "enabled": false
+    }
+  },
+  "agent": {
+    "model": "anthropic/claude-opus-4-5",
+    "workspace": "~/.openclaw/workspace",
+    "temperature": 0.7,
+    "maxTokens": 2000
+  }
+}
