@@ -64,7 +64,53 @@ export default function VehicleFinder() {
   // Fetch vehicles when router query changes
   useEffect(() => {
     fetchVehicles();
+    
+    // If searchDealers flag is set, search for external dealers
+    if (router.query.searchDealers === 'true' && router.query.zipcode) {
+      searchExternalDealers(router.query.zipcode);
+    }
   }, [router.query]);
+
+  const searchExternalDealers = async (zipcode) => {
+    try {
+      const response = await fetch('/api/dealers/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          zipcode,
+          radius: 25,
+          vehicleInterest: router.query.search || '',
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.dealers) {
+        // Merge external vehicles with existing vehicles
+        const externalVehicles = [];
+        data.dealers.forEach(dealer => {
+          if (dealer.vehicles && dealer.vehicles.length > 0) {
+            dealer.vehicles.forEach(vehicle => {
+              externalVehicles.push({
+                ...vehicle,
+                dealer_name: dealer.name,
+                dealer_website: dealer.website_url,
+                is_external: true,
+                external_dealer_id: dealer.id,
+              });
+            });
+          }
+        });
+
+        // Update vehicles state with external vehicles
+        setVehicles(prev => [...prev, ...externalVehicles]);
+      }
+    } catch (error) {
+      console.error('Error searching external dealers:', error);
+    }
+  };
 
   const fetchVehicles = async () => {
     setLoading(true);
