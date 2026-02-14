@@ -32,7 +32,18 @@ This system uses AI and web scraping to:
 
 ### 1. Web Search APIs
 
-You need at least one of these:
+**RECOMMENDED: Brave Search API** ⭐
+```env
+BRAVE_SEARCH_API_KEY=your_api_key
+```
+
+Get from: https://brave.com/search/api/
+- Privacy-focused
+- Independent search index
+- Competitive pricing
+- Fast API
+
+**Alternative Options:**
 
 **Option A: Google Custom Search**
 ```env
